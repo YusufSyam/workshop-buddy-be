@@ -13,6 +13,17 @@ from pathlib import Path
 router = APIRouter(prefix="/api/mechanics", tags=["mechanics"])
 
 
+def delete_photo_file(photo_url: Optional[str]) -> None:
+    """Helper function to delete photo file if it exists"""
+    if photo_url and photo_url.startswith("/uploads/"):
+        photo_path = Path(photo_url.replace("/uploads/", "uploads/"))
+        if photo_path.exists():
+            try:
+                photo_path.unlink()
+            except Exception:
+                pass  # Ignore errors when deleting old file
+
+
 @router.get("", response_model=List[MechanicResponse])
 async def list_mechanics(session: AsyncSession = Depends(get_session)):
     """List all mechanics"""
@@ -79,9 +90,20 @@ async def update_mechanic(
     session: AsyncSession = Depends(get_session)
 ):
     """Update a mechanic"""
-    updated_mechanic = await update_mechanic_db(session, mechanic_id, mechanic_update)
-    if not updated_mechanic:
+    # Get current mechanic to check for old photo
+    current_mechanic = await get_mechanic_db(session, mechanic_id)
+    if not current_mechanic:
         raise HTTPException(status_code=404, detail="Mechanic not found")
+    
+    # Check if photo is being updated
+    update_data = mechanic_update.model_dump(exclude_unset=True)
+    if "photo" in update_data:
+        new_photo = update_data["photo"]
+        # If new photo is different from old photo, delete old photo
+        if current_mechanic.photo and current_mechanic.photo != new_photo:
+            delete_photo_file(current_mechanic.photo)
+    
+    updated_mechanic = await update_mechanic_db(session, mechanic_id, mechanic_update)
     return updated_mechanic
 
 
@@ -91,9 +113,15 @@ async def delete_mechanic(
     session: AsyncSession = Depends(get_session)
 ):
     """Delete a mechanic"""
-    success = await delete_mechanic_db(session, mechanic_id)
-    if not success:
+    # Get mechanic to delete photo before deleting record
+    mechanic = await get_mechanic_db(session, mechanic_id)
+    if not mechanic:
         raise HTTPException(status_code=404, detail="Mechanic not found")
+    
+    # Delete photo file if exists
+    delete_photo_file(mechanic.photo)
+    
+    success = await delete_mechanic_db(session, mechanic_id)
     return None
 
 
@@ -137,13 +165,7 @@ async def upload_mechanic_photo(
         raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
     
     # Delete old photo if exists
-    if mechanic.photo:
-        old_photo_path = Path(mechanic.photo.replace("/uploads/", "uploads/"))
-        if old_photo_path.exists():
-            try:
-                old_photo_path.unlink()
-            except:
-                pass  # Ignore errors when deleting old file
+    delete_photo_file(mechanic.photo)
     
     # Update mechanic with new photo path
     photo_url = f"/uploads/mechanics/{filename}"

@@ -18,6 +18,17 @@ from pathlib import Path
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 
 
+def delete_photo_file(photo_url: Optional[str]) -> None:
+    """Helper function to delete photo file if it exists"""
+    if photo_url and photo_url.startswith("/uploads/"):
+        photo_path = Path(photo_url.replace("/uploads/", "uploads/"))
+        if photo_path.exists():
+            try:
+                photo_path.unlink()
+            except Exception:
+                pass  # Ignore errors when deleting old file
+
+
 @router.get("", response_model=List[InventoryItemResponse])
 async def list_inventory_items(
     search: Optional[str] = None,
@@ -99,9 +110,20 @@ async def update_inventory_item(
     session: AsyncSession = Depends(get_session)
 ):
     """Update an inventory item"""
-    updated_item = await update_inventory_item(session, item_id, item_update)
-    if not updated_item:
+    # Get current item to check for old photo
+    current_item = await get_inventory_item(session, item_id)
+    if not current_item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    # Check if photo is being updated
+    update_data = item_update.model_dump(exclude_unset=True)
+    if "photo" in update_data:
+        new_photo = update_data["photo"]
+        # If new photo is different from old photo, delete old photo
+        if current_item.photo and current_item.photo != new_photo:
+            delete_photo_file(current_item.photo)
+    
+    updated_item = await update_inventory_item(session, item_id, item_update)
     return updated_item
 
 
@@ -124,9 +146,15 @@ async def delete_inventory_item(
     session: AsyncSession = Depends(get_session)
 ):
     """Delete an inventory item"""
-    success = await delete_inventory_item(session, item_id)
-    if not success:
+    # Get item to delete photo before deleting record
+    item = await get_inventory_item(session, item_id)
+    if not item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    # Delete photo file if exists
+    delete_photo_file(item.photo)
+    
+    success = await delete_inventory_item(session, item_id)
     return None
 
 
@@ -170,13 +198,7 @@ async def upload_inventory_photo(
         raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
     
     # Delete old photo if exists
-    if item.photo:
-        old_photo_path = Path(item.photo.replace("/uploads/", "uploads/"))
-        if old_photo_path.exists():
-            try:
-                old_photo_path.unlink()
-            except:
-                pass  # Ignore errors when deleting old file
+    delete_photo_file(item.photo)
     
     # Update item with new photo path
     photo_url = f"/uploads/inventory/{filename}"
