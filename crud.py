@@ -361,3 +361,89 @@ async def get_weekly_stats(session: AsyncSession, from_date: str) -> dict:
         "total_transactions": int(row.total_transactions or 0),
     }
 
+
+# Transaction History
+async def get_transaction_history(
+    session: AsyncSession,
+    page: int = 1,
+    page_size: int = 10
+) -> dict:
+    """
+    Get transaction history grouped by date with pagination.
+    Returns total_profit, total_sales, total_transactions, and total_services per date.
+    total_services = transactions without labors (only items).
+    """
+    # Calculate offset
+    offset = (page - 1) * page_size
+    
+    # Get unique dates with their stats
+    # Using SQLite date() function to extract date from datetime
+    date_query = select(
+        func.date(Transaction.created_at).label("date"),
+        func.sum(Transaction.total_subtotal).label("total_sales"),
+        func.sum(Transaction.total_net_profit).label("total_profit"),
+        func.count(Transaction.id).label("total_transactions")
+    ).group_by(
+        func.date(Transaction.created_at)
+    ).order_by(
+        func.date(Transaction.created_at).desc()
+    )
+    
+    # Get total count of unique dates
+    count_query = select(
+        func.count(func.distinct(func.date(Transaction.created_at)))
+    )
+    
+    # Execute count query
+    count_result = await session.execute(count_query)
+    total = count_result.scalar() or 0
+    
+    # Execute main query with pagination
+    paginated_query = date_query.offset(offset).limit(page_size)
+    result = await session.execute(paginated_query)
+    rows = result.all()
+    
+    # For each date, calculate total_services (transactions without labors)
+    history_items = []
+    for row in rows:
+        date_str = row.date
+        
+        # Count transactions without labors for this date
+        # Parse date to get start and end datetime
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+        start_datetime = datetime.combine(date_obj, datetime.min.time())
+        end_datetime = datetime.combine(date_obj, datetime.max.time())
+        
+        # Count transactions that don't have labors using subquery
+        # Transactions without labors = all transactions - transactions with labors
+        services_query = select(func.count(Transaction.id)).where(
+            and_(
+                Transaction.created_at >= start_datetime,
+                Transaction.created_at <= end_datetime,
+                ~Transaction.id.in_(
+                    select(TransactionLabor.transaction_id).distinct()
+                )
+            )
+        )
+        
+        services_result = await session.execute(services_query)
+        total_services = services_result.scalar() or 0
+        
+        history_items.append({
+            "date": date_str,
+            "total_sales": int(row.total_sales or 0),
+            "total_profit": int(row.total_profit or 0),
+            "total_transactions": int(row.total_transactions or 0),
+            "total_services": total_services
+        })
+    
+    # Calculate total pages
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+    
+    return {
+        "items": history_items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }

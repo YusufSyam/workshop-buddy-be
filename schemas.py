@@ -146,3 +146,19 @@ class WeeklyStatsResponse(BaseModel):
     total_profit: int
     total_transactions: int
 
+
+# Transaction History Schemas
+class TransactionHistoryItem(BaseModel):
+    date: str
+    total_profit: int
+    total_sales: int
+    total_transactions: int
+    total_services: int  # Transactions without labors (only items)
+
+
+class TransactionHistoryResponse(BaseModel):
+    items: List[TransactionHistoryItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
