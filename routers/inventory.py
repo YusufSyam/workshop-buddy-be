@@ -8,8 +8,8 @@ from schemas import (
 )
 from database import get_session
 from crud import (
-    get_inventory_items, create_inventory_item, update_inventory_item,
-    adjust_inventory_stock, delete_inventory_item, get_inventory_item
+    get_inventory_items, create_inventory_item as create_inventory_item_db, update_inventory_item as update_inventory_item_db,
+    adjust_inventory_stock, delete_inventory_item as delete_inventory_item_db, get_inventory_item as get_inventory_item_db
 )
 import os
 import uuid
@@ -46,7 +46,7 @@ async def create_inventory_item(
     session: AsyncSession = Depends(get_session)
 ):
     """Create a new inventory item (JSON format)"""
-    return await create_inventory_item(session, item)
+    return await create_inventory_item_db(session, item)
 
 
 @router.post("/with-photo", response_model=InventoryItemResponse, status_code=201)
@@ -100,7 +100,7 @@ async def create_inventory_item_with_photo(
         category=category,
         photo=photo_url
     )
-    return await create_inventory_item(session, item_data)
+    return await create_inventory_item_db(session, item_data)
 
 
 @router.put("/{item_id}", response_model=InventoryItemResponse)
@@ -111,7 +111,7 @@ async def update_inventory_item(
 ):
     """Update an inventory item"""
     # Get current item to check for old photo
-    current_item = await get_inventory_item(session, item_id)
+    current_item = await get_inventory_item_db(session, item_id)
     if not current_item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     
@@ -123,7 +123,7 @@ async def update_inventory_item(
         if current_item.photo and current_item.photo != new_photo:
             delete_photo_file(current_item.photo)
     
-    updated_item = await update_inventory_item(session, item_id, item_update)
+    updated_item = await update_inventory_item_db(session, item_id, item_update)
     return updated_item
 
 
@@ -147,14 +147,14 @@ async def delete_inventory_item(
 ):
     """Delete an inventory item"""
     # Get item to delete photo before deleting record
-    item = await get_inventory_item(session, item_id)
+    item = await get_inventory_item_db(session, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     
     # Delete photo file if exists
     delete_photo_file(item.photo)
     
-    success = await delete_inventory_item(session, item_id)
+    success = await delete_inventory_item_db(session, item_id)
     return None
 
 
@@ -170,7 +170,7 @@ async def upload_inventory_photo(
     Returns updated inventory item with photo URL.
     """
     # Check if item exists
-    item = await get_inventory_item(session, item_id)
+    item = await get_inventory_item_db(session, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     
@@ -203,7 +203,7 @@ async def upload_inventory_photo(
     # Update item with new photo path
     photo_url = f"/uploads/inventory/{filename}"
     update_data = InventoryItemUpdate(photo=photo_url)
-    updated_item = await update_inventory_item(session, item_id, update_data)
+    updated_item = await update_inventory_item_db(session, item_id, update_data)
     
     return updated_item
 
