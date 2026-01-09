@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from schemas import TransactionCreate, TransactionResponse
 from database import get_session
-from crud import get_transactions, create_transaction, delete_transaction
+from crud import get_transactions, create_transaction as create_transaction_db, delete_transaction as delete_transaction_db
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
@@ -32,7 +32,7 @@ async def create_transaction(
 ):
     """Create a new transaction. Automatically deducts stock from inventory items."""
     try:
-        return await create_transaction(session, transaction)
+        return await create_transaction_db(session, transaction)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

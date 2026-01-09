@@ -22,7 +22,8 @@ async def get_daily_note(
     
     note = await get_daily_note_db(session, date)
     if not note:
-        raise HTTPException(status_code=404, detail="Note not found")
+        # Return empty note instead of error
+        return DailyNoteResponse(date=date, content="")
     return note
 
 
