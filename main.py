@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from database import init_db, close_db
 from routers import inventory, mechanics, transactions, notes, stats
 import asyncio
 from seed_data import seed_data
+import os
 
 
 @asynccontextmanager
@@ -12,6 +14,11 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events"""
     # Startup
     print("Starting up...")
+    
+    # Create uploads directory if it doesn't exist
+    os.makedirs("uploads/mechanics", exist_ok=True)
+    os.makedirs("uploads/inventory", exist_ok=True)
+    
     await init_db()
     
     # Seed data if database is empty
@@ -42,6 +49,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files for serving uploaded images
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Include routers
 app.include_router(inventory.router)
