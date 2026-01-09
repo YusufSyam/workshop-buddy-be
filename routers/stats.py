@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from schemas import DailyStatsResponse, WeeklyStatsResponse
 from database import get_session
-from crud import get_daily_stats, get_weekly_stats
+from crud import get_daily_stats as get_daily_stats_db, get_weekly_stats as get_weekly_stats_db
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -20,7 +20,7 @@ async def get_daily_stats(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
-    stats = await get_daily_stats(session, date)
+    stats = await get_daily_stats_db(session, date)
     return DailyStatsResponse(**stats)
 
 
@@ -37,6 +37,6 @@ async def get_weekly_stats(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
-    stats = await get_weekly_stats(session, from_date)
+    stats = await get_weekly_stats_db(session, from_date)
     return WeeklyStatsResponse(**stats)
 
