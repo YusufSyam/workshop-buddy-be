@@ -3,7 +3,8 @@ from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
 from sqlmodel import select as sqlmodel_select
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+import calendar
 from models import (
     InventoryItem, Mechanic, Transaction, TransactionItem, 
     TransactionLabor, DailyNote, Category
@@ -324,11 +325,62 @@ async def get_daily_stats(session: AsyncSession, date: str) -> dict:
     result = await session.execute(query)
     row = result.first()
     
+    # Calculate total_item_sold: sum of all qty from TransactionItem on that day
+    items_query = select(
+        func.sum(TransactionItem.qty).label("total_item_sold")
+    ).select_from(
+        TransactionItem
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).where(
+        and_(
+            Transaction.created_at >= start_datetime,
+            Transaction.created_at <= end_datetime
+        )
+    )
+    items_result = await session.execute(items_query)
+    total_item_sold = items_result.scalar() or 0
+    
+    # Calculate total_item_cost: sum of (cost_at_sale * qty) from TransactionItem on that day
+    cost_query = select(
+        func.sum(TransactionItem.cost_at_sale * TransactionItem.qty).label("total_item_cost")
+    ).select_from(
+        TransactionItem
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).where(
+        and_(
+            Transaction.created_at >= start_datetime,
+            Transaction.created_at <= end_datetime
+        )
+    )
+    cost_result = await session.execute(cost_query)
+    total_item_cost = cost_result.scalar() or 0
+    
+    # Calculate total_service: count distinct transactions that have TransactionLabor
+    services_query = select(
+        func.count(func.distinct(TransactionLabor.transaction_id)).label("total_service")
+    ).select_from(
+        TransactionLabor
+    ).join(
+        Transaction, TransactionLabor.transaction_id == Transaction.id
+    ).where(
+        and_(
+            Transaction.created_at >= start_datetime,
+            Transaction.created_at <= end_datetime
+        )
+    )
+    services_result = await session.execute(services_query)
+    total_service = services_result.scalar() or 0
+    
     return {
         "date": date,
         "total_sales": int(row.total_sales or 0),
         "total_profit": int(row.total_profit or 0),
         "total_transactions": int(row.total_transactions or 0),
+        "total_item_sold": int(total_item_sold),
+        "total_service": int(total_service),
+        "total_item_cost": int(total_item_cost),
     }
 
 
@@ -353,12 +405,63 @@ async def get_weekly_stats(session: AsyncSession, from_date: str) -> dict:
     result = await session.execute(query)
     row = result.first()
     
+    # Calculate total_item_sold: sum of all qty from TransactionItem in the week
+    items_query = select(
+        func.sum(TransactionItem.qty).label("total_item_sold")
+    ).select_from(
+        TransactionItem
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).where(
+        and_(
+            Transaction.created_at >= start_datetime,
+            Transaction.created_at <= end_datetime
+        )
+    )
+    items_result = await session.execute(items_query)
+    total_item_sold = items_result.scalar() or 0
+    
+    # Calculate total_item_cost: sum of (cost_at_sale * qty) from TransactionItem in the week
+    cost_query = select(
+        func.sum(TransactionItem.cost_at_sale * TransactionItem.qty).label("total_item_cost")
+    ).select_from(
+        TransactionItem
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).where(
+        and_(
+            Transaction.created_at >= start_datetime,
+            Transaction.created_at <= end_datetime
+        )
+    )
+    cost_result = await session.execute(cost_query)
+    total_item_cost = cost_result.scalar() or 0
+    
+    # Calculate total_service: count distinct transactions that have TransactionLabor in the week
+    services_query = select(
+        func.count(func.distinct(TransactionLabor.transaction_id)).label("total_service")
+    ).select_from(
+        TransactionLabor
+    ).join(
+        Transaction, TransactionLabor.transaction_id == Transaction.id
+    ).where(
+        and_(
+            Transaction.created_at >= start_datetime,
+            Transaction.created_at <= end_datetime
+        )
+    )
+    services_result = await session.execute(services_query)
+    total_service = services_result.scalar() or 0
+    
     return {
         "from_date": from_date,
         "to_date": to_date_obj.strftime("%Y-%m-%d"),
         "total_sales": int(row.total_sales or 0),
         "total_profit": int(row.total_profit or 0),
         "total_transactions": int(row.total_transactions or 0),
+        "total_item_sold": int(total_item_sold),
+        "total_service": int(total_service),
+        "total_item_cost": int(total_item_cost),
     }
 
 
@@ -446,4 +549,98 @@ async def get_transaction_history(
         "page": page,
         "page_size": page_size,
         "total_pages": total_pages
+    }
+
+
+async def get_last_month_stats(session: AsyncSession, from_month: Optional[str] = None) -> dict:
+    """Get monthly statistics - either last 30 days or for a specific month (YYYY-MM)"""
+    if from_month:
+        # Parse YYYY-MM format and get date range for that month
+        try:
+            year, month = map(int, from_month.split("-"))
+            from_date_obj = date(year, month, 1)
+            # Get last day of the month
+            last_day = calendar.monthrange(year, month)[1]
+            to_date_obj = date(year, month, last_day)
+        except (ValueError, IndexError):
+            raise ValueError("Invalid month format. Use YYYY-MM")
+    else:
+        # Last 30 days from today
+        to_date_obj = date.today()
+        from_date_obj = to_date_obj - timedelta(days=29)  # 29 days + today = 30 days
+    
+    start_datetime = datetime.combine(from_date_obj, datetime.min.time())
+    end_datetime = datetime.combine(to_date_obj, datetime.max.time())
+    
+    query = select(
+        func.sum(Transaction.total_subtotal).label("total_sales"),
+        func.sum(Transaction.total_net_profit).label("total_profit"),
+        func.count(Transaction.id).label("total_transactions")
+    ).where(
+        and_(
+            Transaction.created_at >= start_datetime,
+            Transaction.created_at <= end_datetime
+        )
+    )
+    
+    result = await session.execute(query)
+    row = result.first()
+    
+    # Calculate total_item_sold: sum of all qty from TransactionItem in the period
+    items_query = select(
+        func.sum(TransactionItem.qty).label("total_item_sold")
+    ).select_from(
+        TransactionItem
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).where(
+        and_(
+            Transaction.created_at >= start_datetime,
+            Transaction.created_at <= end_datetime
+        )
+    )
+    items_result = await session.execute(items_query)
+    total_item_sold = items_result.scalar() or 0
+    
+    # Calculate total_item_cost: sum of (cost_at_sale * qty) from TransactionItem in the period
+    cost_query = select(
+        func.sum(TransactionItem.cost_at_sale * TransactionItem.qty).label("total_item_cost")
+    ).select_from(
+        TransactionItem
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).where(
+        and_(
+            Transaction.created_at >= start_datetime,
+            Transaction.created_at <= end_datetime
+        )
+    )
+    cost_result = await session.execute(cost_query)
+    total_item_cost = cost_result.scalar() or 0
+    
+    # Calculate total_service: count distinct transactions that have TransactionLabor in the period
+    services_query = select(
+        func.count(func.distinct(TransactionLabor.transaction_id)).label("total_service")
+    ).select_from(
+        TransactionLabor
+    ).join(
+        Transaction, TransactionLabor.transaction_id == Transaction.id
+    ).where(
+        and_(
+            Transaction.created_at >= start_datetime,
+            Transaction.created_at <= end_datetime
+        )
+    )
+    services_result = await session.execute(services_query)
+    total_service = services_result.scalar() or 0
+    
+    return {
+        "from_date": from_date_obj.strftime("%Y-%m-%d"),
+        "to_date": to_date_obj.strftime("%Y-%m-%d"),
+        "total_sales": int(row.total_sales or 0),
+        "total_profit": int(row.total_profit or 0),
+        "total_transactions": int(row.total_transactions or 0),
+        "total_item_sold": int(total_item_sold),
+        "total_service": int(total_service),
+        "total_item_cost": int(total_item_cost),
     }

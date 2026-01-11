@@ -137,6 +137,9 @@ class DailyStatsResponse(BaseModel):
     total_sales: int
     total_profit: int
     total_transactions: int
+    total_item_sold: int
+    total_service: int
+    total_item_cost: int
 
 
 class WeeklyStatsResponse(BaseModel):
@@ -145,6 +148,20 @@ class WeeklyStatsResponse(BaseModel):
     total_sales: int
     total_profit: int
     total_transactions: int
+    total_item_sold: int
+    total_service: int
+    total_item_cost: int
+
+
+class LastMonthStatsResponse(BaseModel):
+    from_date: str
+    to_date: str
+    total_sales: int
+    total_profit: int
+    total_transactions: int
+    total_item_sold: int
+    total_service: int
+    total_item_cost: int
 
 
 # Transaction History Schemas

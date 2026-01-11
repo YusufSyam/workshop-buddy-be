@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from schemas import DailyStatsResponse, WeeklyStatsResponse
+from typing import Optional
+from schemas import DailyStatsResponse, WeeklyStatsResponse, LastMonthStatsResponse
 from database import get_session
-from crud import get_daily_stats as get_daily_stats_db, get_weekly_stats as get_weekly_stats_db
+from crud import (
+    get_daily_stats as get_daily_stats_db, 
+    get_weekly_stats as get_weekly_stats_db,
+    get_last_month_stats as get_last_month_stats_db
+)
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -39,4 +44,21 @@ async def get_weekly_stats(
     
     stats = await get_weekly_stats_db(session, from_date)
     return WeeklyStatsResponse(**stats)
+
+
+@router.get("/last_month", response_model=LastMonthStatsResponse)
+async def get_last_month_stats(
+    from_month: Optional[str] = Query(None, description="Month in YYYY-MM format. If not provided, returns last 30 days"),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get monthly statistics - either last 30 days or for a specific month (YYYY-MM)
+    If from_month is not provided, returns statistics for the last 30 days from today.
+    If from_month is provided (e.g., '2024-01'), returns statistics for that entire month.
+    """
+    try:
+        stats = await get_last_month_stats_db(session, from_month)
+        return LastMonthStatsResponse(**stats)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
