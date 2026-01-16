@@ -16,22 +16,23 @@ async def lifespan(app: FastAPI):
     print("Starting up...")
     
     # Create uploads directory if it doesn't exist
+    os.makedirs("uploads", exist_ok=True)
     os.makedirs("uploads/mechanics", exist_ok=True)
     os.makedirs("uploads/inventory", exist_ok=True)
     
-    await init_db()
+    # await init_db()
     
-    # Seed data if database is empty
-    try:
-        await seed_data()
-    except Exception as e:
-        print(f"Error seeding data: {e}")
+    # # Seed data if database is empty
+    # try:
+    #     await seed_data()
+    # except Exception as e:
+    #     print(f"Error seeding data: {e}")
     
-    yield
+    # yield
     
-    # Shutdown
-    print("Shutting down...")
-    await close_db()
+    # # Shutdown
+    # print("Shutting down...")
+    # await close_db()
 
 
 app = FastAPI(
