@@ -39,3 +39,6 @@ build/
 uploads/*
 !uploads/.gitkeep
 
+# fe
+frontend_ui/
+

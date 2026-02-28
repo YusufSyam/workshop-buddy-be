@@ -1,13 +1,31 @@
+import sys
+import os
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from database import init_db, close_db
 from routers import inventory, mechanics, transactions, notes, stats
-import asyncio
 from seed_data import seed_data
-import os
 
+# --- LOGIKA PATH UNTUK EXE (DITARUH DI LUAR AGAR JALAN DULUAN) ---
+# Menentukan base path (lokasi file .exe atau script .py)
+if getattr(sys, 'frozen', False):
+    # Jika jalan sebagai .exe
+    base_path = os.path.dirname(sys.executable)
+else:
+    # Jika jalan sebagai script biasa
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+# Tentukan full path untuk uploads
+uploads_path = os.path.join(base_path, "uploads")
+
+# Buat folder SEKARANG JUGA (sebelum app.mount dijalankan)
+# Kita buat subfolder-nya sekalian
+os.makedirs(os.path.join(uploads_path, "mechanics"), exist_ok=True)
+os.makedirs(os.path.join(uploads_path, "inventory"), exist_ok=True)
+# ---------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -15,24 +33,20 @@ async def lifespan(app: FastAPI):
     # Startup
     print("Starting up...")
     
-    # Create uploads directory if it doesn't exist
-    os.makedirs("uploads", exist_ok=True)
-    os.makedirs("uploads/mechanics", exist_ok=True)
-    os.makedirs("uploads/inventory", exist_ok=True)
+    # Inisialisasi DB (Uncomment jika ingin dipakai)
+    await init_db()
     
-    # await init_db()
-    
-    # # Seed data if database is empty
+    # Seed data logic (Uncomment jika ingin dipakai)
     # try:
     #     await seed_data()
     # except Exception as e:
     #     print(f"Error seeding data: {e}")
     
-    # yield
+    yield
     
-    # # Shutdown
-    # print("Shutting down...")
-    # await close_db()
+    # Shutdown
+    print("Shutting down...")
+    await close_db()
 
 
 app = FastAPI(
@@ -51,8 +65,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for serving uploaded images
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# Mount static files menggunakan 'uploads_path' yang absolut & sudah pasti ada
+app.mount("/uploads", StaticFiles(directory=uploads_path), name="uploads")
 
 # Include routers
 app.include_router(inventory.router)
@@ -60,16 +74,6 @@ app.include_router(mechanics.router)
 app.include_router(transactions.router)
 app.include_router(notes.router)
 app.include_router(stats.router)
-
-
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "message": "Bengkel OS API",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
 
 
 @app.get("/health")
@@ -80,5 +84,5 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+    # Saat di-build jadi exe, reload harus False
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
