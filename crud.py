@@ -11,7 +11,7 @@ from models import (
 )
 from schemas import (
     InventoryItemCreate, InventoryItemUpdate, MechanicCreate, 
-    MechanicUpdate, TransactionCreate, DailyNoteCreate
+    MechanicUpdate, TransactionCreate, TransactionUpdate, DailyNoteCreate
 )
 
 
@@ -253,6 +253,80 @@ async def create_transaction(
     # Refresh to get the ID and load relationships
     await session.refresh(db_transaction)
     # Reload with relationships
+    return await get_transaction(session, db_transaction.id)
+
+
+async def update_transaction(
+    session: AsyncSession,
+    transaction_id: int,
+    data: TransactionUpdate,
+) -> Optional[Transaction]:
+    """
+    Update a transaction (any date). Restores stock from old items, then applies new items/labors.
+    """
+    query = select(Transaction).where(Transaction.id == transaction_id).options(
+        selectinload(Transaction.items),
+        selectinload(Transaction.labors),
+    )
+    result = await session.execute(query)
+    db_transaction = result.scalar_one_or_none()
+    if not db_transaction:
+        return None
+
+    # Restore stock from current items
+    for item in db_transaction.items:
+        db_item = await get_inventory_item(session, item.item_id)
+        if db_item:
+            db_item.stock += item.qty
+
+    # Remove old items and labors (cascade would do this on replace; we do it explicitly so stock is already restored)
+    for item in list(db_transaction.items):
+        await session.delete(item)
+    for labor in list(db_transaction.labors):
+        await session.delete(labor)
+    await session.flush()
+
+    # Update header
+    db_transaction.customer_description = data.customer_description
+    db_transaction.discount_amount = data.discount_amount
+    db_transaction.tip_amount = data.tip_amount
+    db_transaction.total_subtotal = data.total_subtotal
+    db_transaction.total_net_profit = data.total_net_profit
+
+    # Add new items and deduct stock
+    for item_data in data.items:
+        db_item = await get_inventory_item(session, item_data.item_id)
+        if not db_item:
+            raise ValueError(f"Inventory item {item_data.item_id} not found")
+        if db_item.stock < item_data.qty:
+            raise ValueError(
+                f"Insufficient stock for item {db_item.name}. Available: {db_item.stock}, Requested: {item_data.qty}"
+            )
+        session.add(
+            TransactionItem(
+                transaction_id=db_transaction.id,
+                item_id=item_data.item_id,
+                qty=item_data.qty,
+                price_at_sale=item_data.price_at_sale,
+                cost_at_sale=item_data.cost_at_sale,
+            )
+        )
+        db_item.stock -= item_data.qty
+
+    # Add new labors
+    for labor_data in data.labors:
+        db_mechanic = await get_mechanic(session, labor_data.mechanic_id)
+        if not db_mechanic:
+            raise ValueError(f"Mechanic {labor_data.mechanic_id} not found")
+        session.add(
+            TransactionLabor(
+                transaction_id=db_transaction.id,
+                mechanic_id=labor_data.mechanic_id,
+                cost=labor_data.cost,
+            )
+        )
+
+    await session.commit()
     return await get_transaction(session, db_transaction.id)
 
 

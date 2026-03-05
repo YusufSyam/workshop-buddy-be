@@ -103,6 +103,17 @@ class TransactionCreate(BaseModel):
     labors: List[TransactionLaborCreate]
 
 
+# Same shape as create; used for full update (any transaction, any date — always editable)
+class TransactionUpdate(BaseModel):
+    customer_description: Optional[str] = None
+    discount_amount: int = Field(default=0)
+    tip_amount: int = Field(default=0)
+    total_subtotal: int
+    total_net_profit: int
+    items: List[TransactionItemCreate]
+    labors: List[TransactionLaborCreate]
+
+
 class TransactionResponse(BaseModel):
     id: int
     created_at: datetime
