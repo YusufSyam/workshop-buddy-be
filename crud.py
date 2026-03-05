@@ -202,6 +202,7 @@ async def create_transaction(
     """
     # Create transaction header
     db_transaction = Transaction(
+        created_at=transaction.created_at or datetime.now(),
         customer_description=transaction.customer_description,
         discount_amount=transaction.discount_amount,
         tip_amount=transaction.tip_amount,
@@ -292,6 +293,7 @@ async def update_transaction(
     db_transaction.tip_amount = data.tip_amount
     db_transaction.total_subtotal = data.total_subtotal
     db_transaction.total_net_profit = data.total_net_profit
+    db_transaction.created_at = data.created_at or datetime.now()
 
     # Add new items and deduct stock
     for item_data in data.items:

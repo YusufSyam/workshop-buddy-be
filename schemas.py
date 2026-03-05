@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from models import Category
@@ -94,6 +94,10 @@ class TransactionLaborResponse(TransactionLaborCreate):
 
 # Transaction Schemas
 class TransactionCreate(BaseModel):
+    created_at: Optional[datetime] = Field(
+        default=None,
+        validation_alias=AliasChoices("created_at", "createdAt"),
+    )
     customer_description: Optional[str] = None
     discount_amount: int = Field(default=0)
     tip_amount: int = Field(default=0)
@@ -105,6 +109,10 @@ class TransactionCreate(BaseModel):
 
 # Same shape as create; used for full update (any transaction, any date — always editable)
 class TransactionUpdate(BaseModel):
+    created_at: Optional[datetime] = Field(
+        default=None,
+        validation_alias=AliasChoices("created_at", "createdAt"),
+    )
     customer_description: Optional[str] = None
     discount_amount: int = Field(default=0)
     tip_amount: int = Field(default=0)
